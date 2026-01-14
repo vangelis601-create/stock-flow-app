@@ -2,16 +2,15 @@ name: Daily Stock Data Update
 
 on:
   schedule:
-    # 設定每天 UTC 時間 08:00 (等於台灣時間下午 16:00 收盤後) 執行
     - cron: '0 8 * * *'
-  workflow_dispatch: # 允許手動執行
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     permissions:
-      contents: write  # 給予寫入權限
+      contents: write
 
     steps:
       - name: Checkout code
@@ -33,11 +32,7 @@ jobs:
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
-          # 檢查 git status 是否有變化
-          if [[ -n $(git status -s) ]]; then
-            git add data/stock_data.csv
-            git commit -m "Auto-update stock data $(date +'%Y-%m-%d')"
-            git push
-          else
-            echo "No changes to commit"
-          fi
+          git add data/stock_data.csv
+          # 下面這行意思：嘗試提交，如果沒東西可提交(失敗)，就直接順利結束(exit 0)，不要報錯
+          git commit -m "Auto-update stock data $(date +'%Y-%m-%d')" || exit 0
+          git push
