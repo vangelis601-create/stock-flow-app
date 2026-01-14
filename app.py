@@ -20,6 +20,10 @@ def load_data():
     try:
         df = pd.read_csv('data/stock_data.csv')
         df['date'] = pd.to_datetime(df['date'])
+        
+        # 確保 stock_name 是字串，避免錯誤
+        df['stock_name'] = df['stock_name'].astype(str)
+        
         # 建立一個顯示名稱: "2330 台積電"
         df['display_name'] = df['stock_id'].astype(str) + " " + df['stock_name']
         return df
@@ -56,8 +60,8 @@ else:
     recent_data = df[df['date'] > start_date]
 
     # 計算這段時間的總買賣超
-    # 依照 'stock_id', 'display_name', 'industry_category' 分組加總
-    momentum = recent_data.groupby(['stock_id', 'display_name', 'industry_category'])[selected_col].sum().reset_index()
+    # [修正點]：這裡加上 'stock_name'，確保加總後它還在
+    momentum = recent_data.groupby(['stock_id', 'stock_name', 'display_name', 'industry_category'])[selected_col].sum().reset_index()
     
     # 改名方便後續處理
     momentum.rename(columns={selected_col: 'Net_Flow'}, inplace=True)
@@ -119,7 +123,7 @@ else:
             st.subheader("❄️ 資金賣超前 10 名")
             top_sell = momentum.sort_values('Net_Flow', ascending=True).head(10)
             
-            # 為了讓 bar 向左長，圖表不用特別改負號，Plotly 會自動處理
+            # 畫圖
             fig_sell = px.bar(
                 top_sell, 
                 x='Net_Flow', 
@@ -139,6 +143,8 @@ else:
         st.subheader("詳細個股清單")
         # 格式化金額欄位
         momentum['金額'] = momentum['Net_Flow'].apply(format_currency)
+        
+        # 這裡現在不會報錯了，因為我們在上面有保留 stock_name
         st.dataframe(
             momentum[['industry_category', 'stock_id', 'stock_name', '金額']]
             .sort_values('金額', ascending=False)
