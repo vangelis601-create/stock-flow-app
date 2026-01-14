@@ -4,14 +4,14 @@ on:
   schedule:
     # 設定每天 UTC 時間 08:00 (等於台灣時間下午 16:00 收盤後) 執行
     - cron: '0 8 * * *'
-  workflow_dispatch: # 這一行很重要，讓你可以手動按按鈕觸發測試
+  workflow_dispatch: # 允許手動執行
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     permissions:
-      contents: write  # 給予機器人寫入權限，這點非常重要！
+      contents: write  # 給予寫入權限
 
     steps:
       - name: Checkout code
@@ -33,11 +33,11 @@ jobs:
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
-          # 檢查是否有檔案被修改，如果有才 commit，避免空 commit 報錯
+          # 檢查 git status 是否有變化
           if [[ -n $(git status -s) ]]; then
             git add data/stock_data.csv
             git commit -m "Auto-update stock data $(date +'%Y-%m-%d')"
             git push
           else
-            print("No changes to commit")
+            echo "No changes to commit"
           fi
