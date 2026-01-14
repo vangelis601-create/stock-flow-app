@@ -33,8 +33,19 @@ jobs:
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           git add data/stock_data.csv
-          # 如果沒有變動，直接結束
-          git diff --staged --quiet || (git commit -m "Auto-update stock data $(date +'%Y-%m-%d')" && \
-          # 關鍵修正：在上傳前，先拉取遠端最新的修改 (Rebase)，避免衝突
-          git pull --rebase origin main && \
-          git push)
+          
+          # 檢查是否有變動
+          if [[ -n $(git status -s) ]]; then
+            echo "偵測到資料變動，準備提交..."
+            git commit -m "Auto-update stock data $(date +'%Y-%m-%d')"
+            
+            # --- 關鍵防撞機制 ---
+            # 嘗試拉取最新版本並合併 (Rebase)
+            # 如果失敗，通常是因為同時改了同一個檔案，但我們這邊通常不會
+            git pull --rebase origin main
+            
+            # 推送
+            git push
+          else
+            echo "無資料變動，跳過提交。"
+          fi
