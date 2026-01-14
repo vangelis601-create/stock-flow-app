@@ -33,6 +33,8 @@ jobs:
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           git add data/stock_data.csv
-          # 下面這行意思：嘗試提交，如果沒東西可提交(失敗)，就直接順利結束(exit 0)，不要報錯
-          git commit -m "Auto-update stock data $(date +'%Y-%m-%d')" || exit 0
-          git push
+          # 如果沒有變動，直接結束
+          git diff --staged --quiet || (git commit -m "Auto-update stock data $(date +'%Y-%m-%d')" && \
+          # 關鍵修正：在上傳前，先拉取遠端最新的修改 (Rebase)，避免衝突
+          git pull --rebase origin main && \
+          git push)
