@@ -2,29 +2,23 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- 設定網頁寬度 ---
-st.set_page_config(layout="wide", page_title="台股籌碼戰情室")
+st.set_page_config(layout="wide", page_title="台股籌碼戰情室 Pro")
 
-# --- 數值格式化函式 (變成 億/萬) ---
+# --- 輔助函式 ---
 def format_currency(value):
-    if abs(value) >= 100000000: # 億
+    if abs(value) >= 100000000:
         return f"{value/100000000:.2f} 億"
-    elif abs(value) >= 10000: # 萬
+    elif abs(value) >= 10000:
         return f"{value/10000:.1f} 萬"
     else:
         return f"{value:.0f}"
 
-# --- 讀取資料 ---
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv('data/stock_data.csv')
         df['date'] = pd.to_datetime(df['date'])
-        
-        # 確保 stock_name 是字串，避免錯誤
         df['stock_name'] = df['stock_name'].astype(str)
-        
-        # 建立一個顯示名稱: "2330 台積電"
         df['display_name'] = df['stock_id'].astype(str) + " " + df['stock_name']
         return df
     except FileNotFoundError:
@@ -32,121 +26,118 @@ def load_data():
 
 df = load_data()
 
-st.title("📊 台股資金流向儀表板 (Taiwan Stock Flow)")
+st.title("📊 台股資金流向儀表板 Pro")
 
 if df is None:
-    st.error("找不到資料檔 (data/stock_data.csv)，請確認 GitHub Actions 是否執行成功。")
+    st.error("找不到資料檔，請檢查 GitHub Actions。")
 else:
-    # --- 側邊欄設定 ---
-    st.sidebar.header("⚙️ 篩選設定")
+    # --- 全域側邊欄 ---
+    st.sidebar.header("⚙️ 全域設定")
     
-    # 1. 選擇投資人類型
+    # 選擇法人
     investor_map = {
         '外資 (Foreign)': 'Foreign_Diff',
         '投信 (Trust)': 'Trust_Diff',
         '自營商 (Dealer)': 'Dealer_Diff'
     }
-    selected_investor_label = st.sidebar.selectbox("選擇觀察法人", list(investor_map.keys()))
+    selected_investor_label = st.sidebar.selectbox("觀察法人", list(investor_map.keys()))
     selected_col = investor_map[selected_investor_label]
     
-    # 2. 選擇天數
-    days_options = [1, 3, 5, 10, 20]
+    # 選擇天數 (新增 60, 90, 120 天)
+    days_options = [1, 3, 5, 10, 20, 60, 90, 120]
     selected_days = st.sidebar.selectbox("累計天數 (N Days)", days_options, index=2)
 
-    # --- 資料處理 ---
-    # 篩選最近 N 天
+    # 計算區間資料
     latest_date = df['date'].max()
     start_date = latest_date - pd.Timedelta(days=selected_days)
     recent_data = df[df['date'] > start_date]
 
-    # 計算這段時間的總買賣超
-    # [修正點]：這裡加上 'stock_name'，確保加總後它還在
-    momentum = recent_data.groupby(['stock_id', 'stock_name', 'display_name', 'industry_category'])[selected_col].sum().reset_index()
-    
-    # 改名方便後續處理
-    momentum.rename(columns={selected_col: 'Net_Flow'}, inplace=True)
+    # --- 三大功能分頁 ---
+    tab1, tab2, tab3 = st.tabs(["🌍 全市場概覽", "🏭 產業資金細項", "📈 個股趨勢分析"])
 
-    # --- 頁面佈局 ---
-    
-    # 分頁顯示
-    tab1, tab2 = st.tabs(["🏭 產業資金流向", "📈 個股排名"])
-
-    # === Tab 1: 產業分析 ===
+    # === Tab 1: 全市場概覽 ===
     with tab1:
-        st.subheader(f"近 {selected_days} 日 - {selected_investor_label} 產業佈局")
+        # 計算累計
+        momentum = recent_data.groupby(['stock_id', 'stock_name', 'display_name', 'industry_category'])[selected_col].sum().reset_index()
+        momentum.rename(columns={selected_col: 'Net_Flow'}, inplace=True)
         
-        # 依照產業加總
-        industry_flow = momentum.groupby('industry_category')['Net_Flow'].sum().reset_index()
-        industry_flow = industry_flow.sort_values('Net_Flow', ascending=False)
+        col_main_1, col_main_2 = st.columns([2, 1])
         
-        # 畫圖 (Bar Chart)
-        fig_ind = px.bar(
-            industry_flow,
-            x='industry_category',
-            y='Net_Flow',
-            color='Net_Flow',
-            color_continuous_scale=['green', 'white', 'red'], # 綠色賣, 紅色買
-            title=f"各產業資金淨流入/流出 ({selected_investor_label})",
-            text_auto='.2s'
-        )
-        fig_ind.update_layout(xaxis_title="產業類別", yaxis_title="淨流量 (元)")
-        st.plotly_chart(fig_ind, use_container_width=True)
-        
-        # 顯示詳細數據表格
-        st.write("產業詳細數據：")
-        industry_flow['格式化金額'] = industry_flow['Net_Flow'].apply(format_currency)
-        st.dataframe(industry_flow[['industry_category', '格式化金額']].set_index('industry_category'))
-
-    # === Tab 2: 個股排名 ===
-    with tab2:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("🔥 資金買超前 10 名")
-            top_buy = momentum.sort_values('Net_Flow', ascending=False).head(10)
+        with col_main_1:
+            st.subheader(f"各產業 {selected_investor_label} 資金流向 ({selected_days}日)")
+            industry_flow = momentum.groupby('industry_category')['Net_Flow'].sum().reset_index()
+            industry_flow = industry_flow.sort_values('Net_Flow', ascending=False)
             
-            # 畫圖
-            fig_buy = px.bar(
-                top_buy, 
-                x='Net_Flow', 
-                y='display_name', 
-                orientation='h',
-                color='Net_Flow',
-                color_continuous_scale='Reds',
-                text='Net_Flow' # 顯示數值
+            fig_ind = px.bar(
+                industry_flow, x='industry_category', y='Net_Flow',
+                color='Net_Flow', color_continuous_scale=['green', 'white', 'red'],
+                text_auto='.2s'
             )
-            fig_buy.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="淨買超金額")
-            fig_buy.update_traces(texttemplate='%{text:.2s}', textposition='outside')
-            st.plotly_chart(fig_buy, use_container_width=True)
-
-        with col2:
-            st.subheader("❄️ 資金賣超前 10 名")
-            top_sell = momentum.sort_values('Net_Flow', ascending=True).head(10)
+            st.plotly_chart(fig_ind, use_container_width=True)
             
+        with col_main_2:
+            st.subheader("全市場買超 Top 10")
+            top_stocks = momentum.sort_values('Net_Flow', ascending=False).head(10)
+            st.dataframe(
+                top_stocks[['display_name', 'Net_Flow']].style.format({'Net_Flow': format_currency})
+            )
+
+    # === Tab 2: 產業資金細項 (您的新需求) ===
+    with tab2:
+        st.subheader("🔍 產業資金深度分析")
+        
+        # 取得所有產業列表
+        all_industries = sorted(df['industry_category'].unique().tolist())
+        selected_industry = st.selectbox("請選擇要查看的產業:", all_industries)
+        
+        # 篩選該產業的股票
+        industry_data = momentum[momentum['industry_category'] == selected_industry].sort_values('Net_Flow', ascending=False)
+        
+        if not industry_data.empty:
             # 畫圖
-            fig_sell = px.bar(
-                top_sell, 
-                x='Net_Flow', 
-                y='display_name', 
-                orientation='h',
-                color='Net_Flow',
-                color_continuous_scale='Greens_r', # 綠色倒轉
+            fig_ind_detail = px.bar(
+                industry_data,
+                x='Net_Flow', y='display_name', orientation='h',
+                title=f"{selected_industry} - {selected_investor_label} 資金分布 ({selected_days}日)",
+                color='Net_Flow', color_continuous_scale=['green', 'white', 'red'],
                 text='Net_Flow'
             )
-            # 賣超由多到少排
-            fig_sell.update_layout(yaxis={'categoryorder':'total descending'}, xaxis_title="淨賣超金額")
-            fig_sell.update_traces(texttemplate='%{text:.2s}', textposition='outside')
-            st.plotly_chart(fig_sell, use_container_width=True)
+            fig_ind_detail.update_traces(texttemplate='%{text:.2s}', textposition='outside')
+            fig_ind_detail.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_ind_detail, use_container_width=True)
+            
+            # 表格
+            st.write(f"{selected_industry} 詳細數據")
+            industry_data['金額'] = industry_data['Net_Flow'].apply(format_currency)
+            st.dataframe(industry_data[['stock_id', 'stock_name', '金額']])
+        else:
+            st.info("此產業在選定區間內無交易資料。")
 
-        # 詳細清單
-        st.divider()
-        st.subheader("詳細個股清單")
-        # 格式化金額欄位
-        momentum['金額'] = momentum['Net_Flow'].apply(format_currency)
+    # === Tab 3: 個股趨勢分析 (您的新需求) ===
+    with tab3:
+        st.subheader("📈 個股每日買賣超趨勢")
         
-        # 這裡現在不會報錯了，因為我們在上面有保留 stock_name
-        st.dataframe(
-            momentum[['industry_category', 'stock_id', 'stock_name', '金額']]
-            .sort_values('金額', ascending=False)
-            .reset_index(drop=True)
+        # 選擇股票
+        all_stocks = sorted(df['display_name'].unique().tolist())
+        target_stock = st.selectbox("輸入代號或名稱搜尋股票:", all_stocks)
+        
+        # 抓取該股的所有歷史資料 (不受側邊欄天數限制，預設看 120 天趨勢)
+        stock_trend = df[df['display_name'] == target_stock].sort_values('date')
+        
+        # 畫每日買賣超 Bar Chart
+        fig_trend = px.bar(
+            stock_trend,
+            x='date',
+            y=selected_col,
+            title=f"{target_stock} - {selected_investor_label} 每日買賣超金額",
+            color=selected_col,
+            color_continuous_scale=['green', 'white', 'red'] # 綠賣紅買
         )
+        # 加入一條累計買賣超的線 (可以看出波段趨勢)
+        stock_trend['Cumulative'] = stock_trend[selected_col].cumsum()
+        
+        st.plotly_chart(fig_trend, use_container_width=True)
+        
+        # 顯示統計
+        total_buy = stock_trend[selected_col].sum()
+        st.metric(label=f"近 {len(stock_trend)} 交易日總買賣超", value=format_currency(total_buy))
