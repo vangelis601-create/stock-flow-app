@@ -1,0 +1,43 @@
+name: Daily Stock Data Update
+
+on:
+  schedule:
+    # 設定每天 UTC 時間 08:00 (等於台灣時間下午 16:00 收盤後) 執行
+    - cron: '0 8 * * *'
+  workflow_dispatch: # 這一行很重要，讓你可以手動按按鈕觸發測試
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # 給予機器人寫入權限，這點非常重要！
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run updater script
+        run: python data_updater.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          # 檢查是否有檔案被修改，如果有才 commit，避免空 commit 報錯
+          if [[ -n $(git status -s) ]]; then
+            git add data/stock_data.csv
+            git commit -m "Auto-update stock data $(date +'%Y-%m-%d')"
+            git push
+          else
+            print("No changes to commit")
+          fi
